@@ -154,7 +154,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Authors
 
-- **Your Name** - *Initial work* - [YourGitHub](https://github.com/yourusername)
+- **Your Name** - *Initial work* - [YourGitHub](https://github.com//Shreyas-patil07)
 
 ## 🙏 Acknowledgments
 
@@ -164,9 +164,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-For questions or support, please open an issue or contact [your-email@example.com](mailto:your-email@example.com)
+For questions or support, please open an issue or contact [your-email@example.com](3shreyas2007@gmail.com)
 
 ---
 
 Made with ❤️ for farmers
+
 
