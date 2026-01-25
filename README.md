@@ -1,4 +1,4 @@
-# 🌾 AgriMart - Smart Agricultural Product Recommendation System
+# 🌾 KisanSevak - Smart Agricultural Product Recommendation System
 
 An intelligent chatbot-powered platform that helps farmers find the best agricultural products (seeds, fertilizers, pesticides) based on their location and preferences using AI-driven recommendations.
 
@@ -169,3 +169,4 @@ For questions or support, please open an issue or contact [your-email@example.co
 ---
 
 Made with ❤️ for farmers
+
