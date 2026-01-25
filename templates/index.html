@@ -49,11 +49,6 @@
   <main class="chat-wrapper">
     <div class="chat-container">
 
-      <!-- Location Button -->
-      <button id="location-btn" class="location-btn" onclick="getLocation()">
-        📍 Share My Location
-      </button>
-
       <div id="chat-messages"></div>
 
       <form id="chat-form">
@@ -94,46 +89,13 @@
       const data = await res.json();
       chatStage = data.stage;
       addBotMessage(data.reply);
+      enableChat(data.stage);
     };
-
-    // Location handling
-    async function getLocation() {
-      if (!navigator.geolocation) {
-        addBotMessage("Location not supported. Please type your PIN code.");
-        enableChat("ASK_LOCATION_TEXT");
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const res = await fetch("/chat/location", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude
-            })
-          });
-
-          const data = await res.json();
-          chatStage = data.stage;
-          addBotMessage(data.reply);
-          enableChat(chatStage);
-        },
-        () => {
-          addBotMessage(
-            "Location access denied.\n\nPlease type your village name or PIN code."
-          );
-          enableChat("ASK_LOCATION_TEXT");
-        }
-      );
-    }
 
     function enableChat(stage) {
       chatStage = stage;
       document.getElementById("chat-input").disabled = false;
       document.querySelector("#chat-form button").disabled = false;
-      document.getElementById("location-btn").style.display = "none";
     }
 
     // Chat submit
