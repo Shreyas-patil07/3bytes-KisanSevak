@@ -46,95 +46,18 @@ def chat_start():
     return jsonify({
         "reply": (
             "Hello! I will help you choose the best agricultural product.\n\n"
-            "Please allow location access so I can find nearby sellers."
+            "Please enter your village name or district."
         ),
-        "stage": "ASK_LOCATION"
+        "stage": "ASK_LOCATION_TEXT"
     })
 
 # --------------------
-# Receive GPS location
+# Receive GPS location (REMOVED)
 # --------------------
-@app.route("/chat/location", methods=["POST"])
-def receive_location():
-    data = request.get_json(silent=True) or {}
-
-    lat = data.get("latitude")
-    lon = data.get("longitude")
-
-    if lat is None or lon is None:
-        return jsonify({"error": "Latitude and longitude required"}), 400
-
-    session["farmer_lat"] = float(lat)
-    session["farmer_lon"] = float(lon)
-
-    return jsonify({
-        "reply": (
-            "Location saved.\n\n"
-            "What do you want to buy?\n"
-            "• Seeds\n"
-            "• Fertilizers\n"
-            "• Pesticides"
-        ),
-        "stage": "ASK_CATEGORY"
-    })
 
 # --------------------
-# PIN → LAT/LON (India)
+# PIN → LAT/LON (REMOVED)
 # --------------------
-@app.route("/chat/pin", methods=["POST"])
-def pin_to_location():
-    data = request.get_json(silent=True) or {}
-    pin = str(data.get("pin", "")).strip()
-
-    if not pin.isdigit() or len(pin) != 6:
-        return jsonify({
-            "reply": "Please enter a valid 6-digit PIN code.",
-            "stage": "ASK_LOCATION_TEXT"
-        })
-
-    try:
-        res = requests.get(f"https://api.postalpincode.in/pincode/{pin}", timeout=5)
-        info = res.json()[0]
-
-        if info["Status"] != "Success":
-            raise ValueError("Invalid PIN")
-
-        post_office = info["PostOffice"][0]
-        district = post_office["District"]
-        state = post_office["State"]
-
-        # --------------------
-        # DISTRICT → LAT/LON (fallback mapping)
-        # --------------------
-        DISTRICT_COORDS = {
-            "Mumbai": (19.0760, 72.8777),
-            "Pune": (18.5204, 73.8567),
-            "Thane": (19.2183, 72.9781),
-            "Nashik": (19.9975, 73.7898),
-            "Nagpur": (21.1458, 79.0882),
-        }
-
-        lat, lon = DISTRICT_COORDS.get(district, (19.0760, 72.8777))
-
-        session["farmer_lat"] = lat
-        session["farmer_lon"] = lon
-
-        return jsonify({
-            "reply": (
-                f"Location found for PIN {pin} ({district}, {state}).\n\n"
-                "What do you want to buy?\n"
-                "• Seeds\n"
-                "• Fertilizers\n"
-                "• Pesticides"
-            ),
-            "stage": "ASK_CATEGORY"
-        })
-
-    except Exception:
-        return jsonify({
-            "reply": "Could not find location for this PIN. Please try another PIN.",
-            "stage": "ASK_LOCATION_TEXT"
-        })
 
 # --------------------
 # Main chat logic
