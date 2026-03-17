@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KisanSevak</title>
+
+  <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+  <link rel="icon" href="{{ url_for('static', filename='images/KisanSevak.ico') }}" type="image/x-icon" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- ✅ DEFINE CALLBACK FIRST -->
+  <script>
+    function googleTranslateElementInit() {
+      if (window.google && google.translate) {
+        new google.translate.TranslateElement(
+          { pageLanguage: "en" },
+          "google_translate_element"
+        );
+      }
+    }
+  </script>
+
+  <!-- ✅ LOAD GOOGLE TRANSLATE AFTER -->
+  <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+</head>
+
+<body>
+
+  <!-- Translate Navbar -->
+  <div class="translate-navbar">
+    <div id="google_translate_element"></div>
+  </div>
+
+  <!-- Main Navbar -->
+  <div class="header-container">
+    <nav class="navbar" id="navbar">
+      <div class="nav-container">
+        <div class="nav-brand">
+          <img src="{{ url_for('static', filename='images/KisanSevak.png') }}" style="height:50px;" />
+          <span class="brand-text">KisanSevak</span>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <!-- Chat Section -->
+  <main class="chat-wrapper">
+    <div class="chat-container">
+
+      <div id="chat-messages"></div>
+
+      <form id="chat-form">
+        <textarea
+          id="chat-input"
+          placeholder="Message KisanSevak AI…"
+          rows="1"
+          disabled
+        ></textarea>
+        <button type="submit" disabled>Send</button>
+      </form>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-brand">
+          <img src="{{ url_for('static', filename='images/KisanSevak.png') }}" />
+          <span class="brand-text">KisanSevak</span>
+        </div>
+        <p class="footer-text">Har khet ke liye smart choice</p>
+      </div>
+    </div>
+    <div class="footer-copy">© 2026 KisanSevak</div>
+    <div class="creator-credit"><span>Created by 3bytes</span></div>
+  </footer>
+
+  <!-- ================= CHAT LOGIC ================= -->
+  <script>
+    let chatStage = null;
+
+    // Start conversation
+    window.onload = async () => {
+      const res = await fetch("/chat/start");
+      const data = await res.json();
+      chatStage = data.stage;
+      addBotMessage(data.reply);
+      enableChat(data.stage);
+    };
+
+    function enableChat(stage) {
+      chatStage = stage;
+      document.getElementById("chat-input").disabled = false;
+      document.querySelector("#chat-form button").disabled = false;
+    }
+
+    // Chat submit
+    document.getElementById("chat-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const input = document.getElementById("chat-input");
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      addUserMessage(msg);
+      input.value = "";
+
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: chatStage, message: msg })
+      });
+
+      const data = await res.json();
+      chatStage = data.stage;
+      addBotMessage(data.reply);
+    });
+
+    // Enter key to send (Shift+Enter for new line)
+    document.getElementById("chat-input").addEventListener("keypress", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        const input = document.getElementById("chat-input");
+        if (input.value.trim()) {
+          document.getElementById("chat-form").dispatchEvent(new Event("submit"));
+        }
+      }
+    });
+
+    // UI helpers
+    function addBotMessage(text) {
+      const box = document.getElementById("chat-messages");
+      box.innerHTML += `<div class="bot-message">${text}</div>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function addUserMessage(text) {
+      const box = document.getElementById("chat-messages");
+      box.innerHTML += `<div class="user-message">${text}</div>`;
+      box.scrollTop = box.scrollHeight;
+    }
+  </script>
+
+  <!-- Your existing JS -->
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+</body>
+</html>

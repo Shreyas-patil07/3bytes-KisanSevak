@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Previously Ordered | KisanSevak</title>
+  <link rel="icon" href="{{ url_for('static', filename='images/KisanSevak.ico') }}" type="image/x-icon" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body class="orders-body">
+  <main class="orders-wrapper">
+    <header class="orders-header">
+      <button class="back-btn" type="button" onclick="goBack()">
+        <span aria-hidden="true">&larr;</span>
+        <span>Back</span>
+      </button>
+      <h1>Previously Ordered</h1>
+      <span class="orders-user">{{ user_name }}</span>
+    </header>
+
+    <section class="orders-list" aria-live="polite">
+      {% if orders and orders|length > 0 %}
+        {% for order in orders %}
+          <article class="order-card">
+            <div class="order-head">
+              <h2>{{ order.product_name }}</h2>
+              <span class="status-badge status-{{ order.status|lower }}">{{ order.status }}</span>
+            </div>
+
+            <div class="order-meta">
+              <p><strong>Order date:</strong> {{ order.order_date }}</p>
+              <p><strong>Quantity:</strong> {{ order.quantity }}</p>
+              <p><strong>Price:</strong> {{ order.price }}</p>
+            </div>
+
+            <details class="order-details">
+              <summary>View details</summary>
+              <p>{{ order.details or 'No additional details available for this order.' }}</p>
+            </details>
+
+            <button class="reorder-btn" type="button" onclick="reorderItem('{{ order.product_name|e }}')">Reorder</button>
+          </article>
+        {% endfor %}
+      {% else %}
+        <p class="empty-orders">No previous orders yet.</p>
+      {% endif %}
+    </section>
+  </main>
+
+  <script>
+    function goBack() {
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = "/";
+    }
+
+    function reorderItem(productName) {
+      alert("Reorder requested for: " + productName);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KisanSevak | Login & Signup</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body class="auth-body">
+  <section class="auth-shell">
+    <div class="auth-left">
+      <img src="{{ url_for('static', filename='images/KisanSevak.png') }}" alt="KisanSevak logo" class="auth-logo" />
+      <h1>KisanSevak</h1>
+      <p>
+        Smart crop input recommendations for every field.
+        Log in to continue your personalized farming assistant.
+      </p>
+      <ul>
+        <li>Compare by quality, price, distance, and quantity</li>
+        <li>Get clear recommendations in simple language</li>
+        <li>Works best for local seller discovery</li>
+      </ul>
+    </div>
+
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button id="tab-login" class="auth-tab" type="button">Login</button>
+        <button id="tab-signup" class="auth-tab" type="button">Sign Up</button>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <h2>Welcome Back</h2>
+        <label>Email</label>
+        <input id="login-email" type="email" required />
+        <label>Password</label>
+        <input id="login-password" type="password" minlength="6" required />
+        <button type="submit">Login</button>
+      </form>
+
+      <form id="signup-form" class="auth-form">
+        <h2>Create Account</h2>
+        <label>Full Name</label>
+        <input id="signup-name" type="text" required />
+        <label>Email</label>
+        <input id="signup-email" type="email" required />
+        <label>Password</label>
+        <input id="signup-password" type="password" minlength="6" required />
+        <button type="submit">Sign Up</button>
+      </form>
+
+      <p id="auth-message" class="auth-message" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <script>
+    const initialMode = "{{ mode }}";
+    const loginForm = document.getElementById("login-form");
+    const signupForm = document.getElementById("signup-form");
+    const loginTab = document.getElementById("tab-login");
+    const signupTab = document.getElementById("tab-signup");
+    const authMessage = document.getElementById("auth-message");
+
+    function setMode(mode) {
+      const isLogin = mode === "login";
+      loginForm.style.display = isLogin ? "flex" : "none";
+      signupForm.style.display = isLogin ? "none" : "flex";
+      loginTab.classList.toggle("active", isLogin);
+      signupTab.classList.toggle("active", !isLogin);
+      authMessage.textContent = "";
+    }
+
+    function showMessage(text, isError) {
+      authMessage.textContent = text;
+      authMessage.style.color = isError ? "#b42318" : "#0f766e";
+    }
+
+    async function submitAuth(url, payload) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showMessage(data.error || "Something went wrong.", true);
+        return;
+      }
+      window.location.href = data.redirect || "/";
+    }
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await submitAuth("/auth/login", {
+        email: document.getElementById("login-email").value,
+        password: document.getElementById("login-password").value
+      });
+    });
+
+    signupForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await submitAuth("/auth/signup", {
+        name: document.getElementById("signup-name").value,
+        email: document.getElementById("signup-email").value,
+        password: document.getElementById("signup-password").value
+      });
+    });
+
+    loginTab.addEventListener("click", () => setMode("login"));
+    signupTab.addEventListener("click", () => setMode("signup"));
+
+    setMode(initialMode === "signup" ? "signup" : "login");
+  </script>
+</body>
+</html>

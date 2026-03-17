@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KisanSevak</title>
+
+  <script>
+    const openedAsStaticTemplate =
+      window.location.pathname.includes("/templates/index.html") &&
+      window.location.port !== "5000";
+    if (openedAsStaticTemplate) {
+      window.location.replace("http://127.0.0.1:5000/");
+    }
+  </script>
+
+  <link rel="icon" href="{{ url_for('static', filename='images/KisanSevak.ico') }}" type="image/x-icon" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+
+  <script>
+    function googleTranslateElementInit() {
+      if (window.google && google.translate) {
+        new google.translate.TranslateElement(
+          {
+            pageLanguage: "en",
+            includedLanguages: "en,hi,mr",
+            autoDisplay: false
+          },
+          "google_translate_element"
+        );
+      }
+    }
+  </script>
+  <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+</head>
+<body class="app-body">
+  <div class="app-shell">
+    <aside class="left-rail">
+      <div class="left-rail-top">
+        <div class="brand-block">
+          <img src="{{ url_for('static', filename='images/KisanSevak.png') }}" alt="KisanSevak logo" class="brand-logo" />
+          <h1>KisanSevak</h1>
+        </div>
+
+        <nav class="rail-menu">
+          <button id="new-chat-btn" class="rail-action" type="button">+ New Chat</button>
+          <button id="history-btn" class="rail-action" type="button">Previously Ordered</button>
+          <button id="settings-btn" class="rail-action" type="button">Settings</button>
+        </nav>
+
+        <section class="chat-history-panel">
+          <h2>Your chats</h2>
+          <div id="chat-history-list" class="chat-history-list"></div>
+        </section>
+      </div>
+
+      <div class="rail-footer">
+        <p>{{ user_name or 'Farmer' }}</p>
+        <button id="logout-btn" class="logout-btn" type="button">Log out</button>
+        <span class="made-by">Made by 3Bytes</span>
+      </div>
+    </aside>
+
+    <main class="chatgpt-main">
+      <header class="top-strip">
+        <span class="model-pill">KisanSevak AI Assistant</span>
+        <div id="google_translate_element"></div>
+      </header>
+
+      <section id="chat-messages" class="chat-stream"></section>
+
+      <form id="chat-form" class="composer">
+        <div id="quick-replies" class="quick-replies"></div>
+        <div class="composer-row">
+          <textarea id="chat-input" placeholder="Ask about seeds, fertilizers, pesticides..." rows="1" disabled></textarea>
+          <button type="submit" disabled>Send</button>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <script>
+    let chatStage = null;
+    let selectedCategory = null;
+    let currentChatId = null;
+    let openHistoryMenuId = null;
+    let chatSessions = [];
+    let awaitingContinueForResults = false;
+
+    const STORAGE_KEY = "kisansevak.chatSessions.v1";
+
+    const QUICK_REPLY_MAP = {
+      ASK_CATEGORY: ["Seeds", "Fertilizers", "Pesticides"],
+      ASK_PRODUCT: {
+        seeds: ["Wheat Seeds", "Rice Seeds", "Corn Seeds"],
+        fertilizers: ["Urea", "DAP", "NPK Fertilizer"],
+        pesticides: ["Neem Oil", "Chlorpyrifos", "Imidacloprid"]
+      },
+      AWAIT_CONTINUE: ["Continue"]
+    };
+
+    function loadSessions() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        chatSessions = raw ? JSON.parse(raw) : [];
+      } catch {
+        chatSessions = [];
+      }
+    }
+
+    function saveSessions() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(chatSessions));
+    }
+
+    function nowIso() {
+      return new Date().toISOString();
+    }
+
+    function formatDateGroup(iso) {
+      const date = new Date(iso);
+      const today = new Date();
+      const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const diffDays = Math.floor((startToday - startDate) / 86400000);
+
+      if (diffDays === 0) return "Today";
+      if (diffDays === 1) return "Yesterday";
+      return date.toLocaleDateString();
+    }
+
+    function createChatSession() {
+      const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const sessionObj = {
+        id,
+        title: "KisanSevak AI Assistant",
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        pinned: false,
+        archived: false,
+        stage: null,
+        selectedCategory: null,
+        messages: []
+      };
+      chatSessions.unshift(sessionObj);
+      currentChatId = id;
+      saveSessions();
+      renderHistory();
+      return sessionObj;
+    }
+
+    function getCurrentSession() {
+      return chatSessions.find((c) => c.id === currentChatId) || null;
+    }
+
+    function ensureCurrentSession() {
+      if (currentChatId && getCurrentSession()) return;
+      const available = chatSessions
+        .filter((c) => !c.archived)
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      if (available.length) {
+        currentChatId = available[0].id;
+      } else {
+        createChatSession();
+      }
+    }
+
+    function updateCurrentSession(mutator) {
+      const s = getCurrentSession();
+      if (!s) return;
+      mutator(s);
+      s.updatedAt = nowIso();
+      saveSessions();
+    }
+
+    function deriveTitle(messages) {
+      const userMsg = messages.find((m) => m.role === "user" && m.text.trim());
+      if (userMsg) {
+        return userMsg.text.trim().slice(0, 34);
+      }
+      return "KisanSevak AI Assistant";
+    }
+
+    function pushMessage(role, text) {
+      updateCurrentSession((s) => {
+        s.messages.push({ role, text, at: nowIso() });
+        s.title = deriveTitle(s.messages);
+      });
+      renderHistory();
+    }
+
+    function setChatEnabled(enabled) {
+      document.getElementById("chat-input").disabled = !enabled;
+      document.querySelector("#chat-form button").disabled = !enabled;
+    }
+
+    function quickRepliesForStage(stage) {
+      if (awaitingContinueForResults) {
+        return QUICK_REPLY_MAP.AWAIT_CONTINUE;
+      }
+
+      if (stage === "ASK_CATEGORY") {
+        return QUICK_REPLY_MAP.ASK_CATEGORY;
+      }
+
+      if (stage === "ASK_PRODUCT") {
+        if (selectedCategory && QUICK_REPLY_MAP.ASK_PRODUCT[selectedCategory]) {
+          return QUICK_REPLY_MAP.ASK_PRODUCT[selectedCategory];
+        }
+      }
+
+      return [];
+    }
+
+    function categoryLabel(category) {
+      const c = (category || "").toLowerCase();
+      if (c === "seed") return "Seed";
+      if (c === "fertilizer") return "Fertilizer";
+      if (c === "pesticide") return "Pesticide";
+      return category || "Unknown";
+    }
+
+    function createResultCard(item, rank) {
+      const card = document.createElement("article");
+      const isBest = rank === 1;
+      card.className = `result-card ${isBest ? "best-result" : "other-result"}`;
+
+      const badge = isBest
+        ? `<span class="best-badge">🏆 Best Recommend</span>`
+        : `<span class="other-badge">Other Option</span>`;
+
+      card.innerHTML = `
+        <div class="result-head">
+          <span class="rank-pill">#${rank}</span>
+          ${badge}
+        </div>
+        <h3>${item.name || "Unnamed product"}</h3>
+        <p><strong>Category:</strong> ${categoryLabel(item.category)}</p>
+        <p><strong>QQDP score:</strong> ${item.final_score ?? "N/A"}</p>
+        <p><strong>Price:</strong> ${item.price ?? "N/A"}</p>
+        <p><strong>Seller:</strong> ${item.seller || "Not available"}</p>
+        <button type="button" class="place-order-btn">Place Order</button>
+      `;
+
+      card.querySelector(".place-order-btn").addEventListener("click", () => {
+        alert(`Order placed for: ${item.name || "product"}`);
+      });
+
+      return card;
+    }
+
+    function renderRankedResults(items) {
+      const box = document.getElementById("chat-messages");
+      if (!items || !items.length) return;
+
+      const wrapper = document.createElement("section");
+      wrapper.className = "results-wrapper";
+      wrapper.innerHTML = `<h3 class="results-title">QQDP Ranked Options</h3>`;
+
+      items.forEach((item, idx) => {
+        wrapper.appendChild(createResultCard(item, idx + 1));
+      });
+
+      box.appendChild(wrapper);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function renderQuickReplies(stage) {
+      const box = document.getElementById("quick-replies");
+      const options = quickRepliesForStage(stage);
+
+      box.innerHTML = "";
+      if (!options.length) {
+        box.classList.add("hidden");
+        return;
+      }
+
+      box.classList.remove("hidden");
+      options.forEach((label) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "quick-reply-btn";
+        btn.textContent = label;
+        btn.addEventListener("click", () => {
+          sendChatMessage(label);
+        });
+        box.appendChild(btn);
+      });
+    }
+
+    function appendMessageToUI(role, text) {
+      const box = document.getElementById("chat-messages");
+      const row = document.createElement("div");
+      row.className = `message-row ${role === "user" ? "user-row" : "bot-row"}`;
+
+      const avatar = document.createElement("div");
+      avatar.className = `message-avatar ${role === "user" ? "farmer-avatar" : "bot-avatar"}`;
+      avatar.textContent = role === "user" ? "F" : "B";
+
+      const bubble = document.createElement("div");
+      bubble.className = `chat-bubble ${role === "user" ? "user-message" : "bot-message"}`;
+      bubble.textContent = text;
+
+      if (role === "user") {
+        row.appendChild(bubble);
+        row.appendChild(avatar);
+      } else {
+        row.appendChild(avatar);
+        row.appendChild(bubble);
+      }
+
+      box.appendChild(row);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function addBotMessage(text, persist = true) {
+      appendMessageToUI("bot", text);
+      if (persist) pushMessage("bot", text);
+    }
+
+    function addUserMessage(text, persist = true) {
+      appendMessageToUI("user", text);
+      if (persist) pushMessage("user", text);
+    }
+
+    function normalizeCategory(value) {
+      const msg = (value || "").trim().toLowerCase();
+      if (msg === "seeds" || msg === "fertilizers" || msg === "pesticides") {
+        return msg;
+      }
+      return null;
+    }
+
+    async function sendChatMessage(rawMessage, options = {}) {
+      const { showUser = true } = options;
+      const msg = (rawMessage || "").trim();
+      if (!msg) return;
+
+      if (showUser) {
+        addUserMessage(msg);
+      }
+
+      if (awaitingContinueForResults && msg.toLowerCase() !== "continue") {
+        addBotMessage("Please click Continue to view ranked options.");
+        renderQuickReplies(chatStage);
+        return;
+      }
+
+      if (awaitingContinueForResults && msg.toLowerCase() === "continue") {
+        awaitingContinueForResults = false;
+      }
+
+      const categoryCandidate = normalizeCategory(msg);
+      if (chatStage === "ASK_CATEGORY" && categoryCandidate) {
+        selectedCategory = categoryCandidate;
+      }
+
+      const outboundMessage = (chatStage === "ASK_PREFERENCE" && msg.toLowerCase() === "continue")
+        ? "quality"
+        : msg;
+
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: chatStage, message: outboundMessage })
+      });
+
+      if (res.status === 401) {
+        window.location.href = "/auth";
+        return;
+      }
+
+      const data = await res.json();
+      if (data.error) {
+        addBotMessage(data.error);
+        renderQuickReplies(chatStage);
+        return;
+      }
+
+      if (data.stage === "ASK_PREFERENCE") {
+        chatStage = data.stage;
+        addBotMessage("Searching for the best options around you...");
+        awaitingContinueForResults = true;
+        renderQuickReplies(chatStage);
+        updateCurrentSession((s) => {
+          s.stage = chatStage;
+          s.selectedCategory = selectedCategory;
+        });
+        return;
+      }
+
+      chatStage = data.stage;
+      if (data.reply) {
+        addBotMessage(data.reply);
+      }
+      if (data.stage === "DONE" && Array.isArray(data.ranked_items)) {
+        renderRankedResults(data.ranked_items);
+      }
+      renderQuickReplies(chatStage);
+
+      updateCurrentSession((s) => {
+        s.stage = chatStage;
+        s.selectedCategory = selectedCategory;
+      });
+    }
+
+    async function sendLocation(lat, lon) {
+      const res = await fetch("/chat/location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lon })
+      });
+
+      if (res.status === 401) {
+        window.location.href = "/auth";
+        return;
+      }
+
+      const data = await res.json();
+      if (data.error) {
+        addBotMessage(data.error);
+        chatStage = "ASK_LOCATION_TEXT";
+      } else {
+        chatStage = data.stage;
+        addBotMessage(data.reply);
+      }
+
+      updateCurrentSession((s) => {
+        s.stage = chatStage;
+        s.selectedCategory = selectedCategory;
+      });
+
+      renderQuickReplies(chatStage);
+      setChatEnabled(true);
+    }
+
+    function askForLocationPermission() {
+      if (!navigator.geolocation) {
+        addBotMessage("Location permission is not available in this browser. Please enter your village name or district.");
+        chatStage = "ASK_LOCATION_TEXT";
+        updateCurrentSession((s) => {
+          s.stage = chatStage;
+          s.selectedCategory = selectedCategory;
+        });
+        renderQuickReplies(chatStage);
+        setChatEnabled(true);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          await sendLocation(position.coords.latitude, position.coords.longitude);
+        },
+        () => {
+          addBotMessage("Location permission denied. Please enter your village name or district.");
+          chatStage = "ASK_LOCATION_TEXT";
+          updateCurrentSession((s) => {
+            s.stage = chatStage;
+            s.selectedCategory = selectedCategory;
+          });
+          renderQuickReplies(chatStage);
+          setChatEnabled(true);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    function resetChatWindow() {
+      document.getElementById("chat-messages").innerHTML = "";
+    }
+
+    async function startConversation() {
+      setChatEnabled(false);
+      const res = await fetch("/chat/start");
+      if (res.status === 401) {
+        window.location.href = "/auth";
+        return;
+      }
+
+      const data = await res.json();
+      chatStage = data.stage;
+      selectedCategory = null;
+      addBotMessage(data.reply);
+
+      updateCurrentSession((s) => {
+        s.stage = chatStage;
+        s.selectedCategory = selectedCategory;
+      });
+
+      renderQuickReplies(chatStage);
+
+      if (chatStage === "ASK_LOCATION_PERMISSION") {
+        askForLocationPermission();
+        return;
+      }
+
+      setChatEnabled(true);
+    }
+
+    function renderHistory() {
+      const holder = document.getElementById("chat-history-list");
+      const activeChats = chatSessions
+        .filter((c) => !c.archived)
+        .sort((a, b) => {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+          return new Date(b.updatedAt) - new Date(a.updatedAt);
+        });
+
+      if (!activeChats.length) {
+        holder.innerHTML = '<p class="empty-history">No chats yet.</p>';
+        return;
+      }
+
+      const groups = {};
+      activeChats.forEach((chat) => {
+        const key = chat.pinned ? "Pinned" : formatDateGroup(chat.updatedAt);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(chat);
+      });
+
+      const groupOrder = ["Pinned", "Today", "Yesterday"];
+      const dynamicKeys = Object.keys(groups)
+        .filter((k) => !groupOrder.includes(k))
+        .sort((a, b) => new Date(b) - new Date(a));
+      const keys = groupOrder.filter((k) => groups[k]).concat(dynamicKeys);
+
+      holder.innerHTML = keys
+        .map((groupKey) => {
+          const rows = groups[groupKey]
+            .map((chat) => {
+              const pinLabel = chat.pinned ? "Unpin chat" : "Pin chat";
+              return `
+                <article class="chat-history-item ${chat.id === currentChatId ? "active" : ""}" data-chat-id="${chat.id}">
+                  <button class="chat-history-open" data-action="open" data-chat-id="${chat.id}" type="button">${chat.title}</button>
+                  <button class="history-more" data-action="toggle-menu" data-chat-id="${chat.id}" type="button" aria-label="More options">...</button>
+                  <div class="history-menu ${openHistoryMenuId === chat.id ? "show" : ""}">
+                    <button type="button" data-action="share" data-chat-id="${chat.id}">Share</button>
+                    <button type="button" data-action="group" data-chat-id="${chat.id}">Start a group chat</button>
+                    <button type="button" data-action="rename" data-chat-id="${chat.id}">Rename</button>
+                    <button type="button" data-action="pin" data-chat-id="${chat.id}">${pinLabel}</button>
+                    <button type="button" data-action="archive" data-chat-id="${chat.id}">Archive</button>
+                    <button type="button" data-action="delete" data-chat-id="${chat.id}" class="danger">Delete</button>
+                  </div>
+                </article>
+              `;
+            })
+            .join("");
+          return `
+            <section class="history-group">
+              <h3>${groupKey}</h3>
+              ${rows}
+            </section>
+          `;
+        })
+        .join("");
+    }
+
+    function openChat(chatId) {
+      const target = chatSessions.find((c) => c.id === chatId);
+      if (!target) return;
+
+      currentChatId = chatId;
+      openHistoryMenuId = null;
+      resetChatWindow();
+
+      chatStage = target.stage || null;
+      selectedCategory = target.selectedCategory || null;
+
+      target.messages.forEach((m) => {
+        appendMessageToUI(m.role, m.text);
+      });
+
+      renderQuickReplies(chatStage);
+      setChatEnabled(Boolean(chatStage));
+      renderHistory();
+
+      if (!target.messages.length) {
+        startConversation();
+      }
+    }
+
+    function handleHistoryAction(action, chatId) {
+      const chat = chatSessions.find((c) => c.id === chatId);
+      if (!chat) return;
+
+      if (action === "toggle-menu") {
+        openHistoryMenuId = openHistoryMenuId === chatId ? null : chatId;
+        renderHistory();
+        return;
+      }
+
+      openHistoryMenuId = null;
+
+      if (action === "open") {
+        openChat(chatId);
+        return;
+      }
+
+      if (action === "share") {
+        navigator.clipboard.writeText(window.location.href).then(() => {
+          alert("Link copied. You can now share this chat entry.");
+        });
+      } else if (action === "group") {
+        alert("Start a group chat is not available yet.");
+      } else if (action === "rename") {
+        const next = prompt("Rename chat", chat.title);
+        if (next && next.trim()) {
+          chat.title = next.trim();
+          chat.updatedAt = nowIso();
+          saveSessions();
+        }
+      } else if (action === "pin") {
+        chat.pinned = !chat.pinned;
+        chat.updatedAt = nowIso();
+        saveSessions();
+      } else if (action === "archive") {
+        chat.archived = true;
+        chat.updatedAt = nowIso();
+        saveSessions();
+        if (chat.id === currentChatId) {
+          const fresh = createChatSession();
+          resetChatWindow();
+          chatStage = null;
+          selectedCategory = null;
+          openChat(fresh.id);
+          return;
+        }
+      } else if (action === "delete") {
+        chatSessions = chatSessions.filter((c) => c.id !== chatId);
+        saveSessions();
+        if (chatId === currentChatId) {
+          const fresh = createChatSession();
+          resetChatWindow();
+          chatStage = null;
+          selectedCategory = null;
+          openChat(fresh.id);
+          return;
+        }
+      }
+
+      renderHistory();
+    }
+
+    document.getElementById("chat-history-list").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const action = btn.getAttribute("data-action");
+      const chatId = btn.getAttribute("data-chat-id");
+      if (!action || !chatId) return;
+      handleHistoryAction(action, chatId);
+    });
+
+    document.addEventListener("click", (e) => {
+      const insideMenu = e.target.closest(".history-menu") || e.target.closest(".history-more");
+      if (!insideMenu && openHistoryMenuId) {
+        openHistoryMenuId = null;
+        renderHistory();
+      }
+    });
+
+    document.getElementById("chat-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("chat-input");
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = "";
+      await sendChatMessage(msg);
+    });
+
+    document.getElementById("chat-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById("chat-form").requestSubmit();
+      }
+    });
+
+    document.getElementById("new-chat-btn").addEventListener("click", () => {
+      createChatSession();
+      resetChatWindow();
+      chatStage = null;
+      selectedCategory = null;
+      renderQuickReplies(chatStage);
+      renderHistory();
+      startConversation();
+    });
+
+    document.getElementById("history-btn").addEventListener("click", () => {
+      window.location.href = "/orders";
+    });
+
+    document.getElementById("settings-btn").addEventListener("click", () => {
+      addBotMessage("Settings: Language options are available in the top-right translate menu.");
+    });
+
+    document.getElementById("logout-btn").addEventListener("click", async () => {
+      await fetch("/logout", { method: "POST" });
+      localStorage.removeItem(STORAGE_KEY);
+      window.location.href = "/auth";
+    });
+
+    (function init() {
+      loadSessions();
+      ensureCurrentSession();
+      renderHistory();
+      openChat(currentChatId);
+    })();
+  </script>
+</body>
+</html>
